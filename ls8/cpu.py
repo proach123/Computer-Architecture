@@ -2,9 +2,6 @@
 
 import sys
 
-LDI = 0b10000010
-PRN = 0b01000111
-HLT = 0b00000001
 
 class CPU:
     """Main CPU class."""
@@ -15,12 +12,15 @@ class CPU:
         self.reg = [0] * 8
         self.pc = 0
         self.ir = 0
+        self.fl = self.reg[4]
         self.running = True
         self.commands = {
             0b10000010: self.ldi,
             0b01000111: self.prn,
-            0b00000001: self.hlt
-            
+            0b00000001: self.hlt,
+            0b10100010: self.mul,
+            0b01000101: self.push,
+            0b01000110: self.pop
         }
 
 
@@ -30,22 +30,27 @@ class CPU:
     def ram_write(self,value, address):
         self.ram[address] = value
 
-    def load(self):
+    def load(self, file):
         """Load a program into memory."""
 
         address = 0
 
         # For now, we've just hardcoded a program:
 
-        program = [
-            # From print8.ls8
-            0b10000010, # LDI R0,8
-            0b00000000,
-            0b00001000,
-            0b01000111, # PRN R0
-            0b00000000,
-            0b00000001, # HLT
-        ]
+        with open(file) as f:
+            lines = f.readlines()
+            lines = [line for line in lines if line.startswith('0') or line.startswith('1')]
+            program = [int(line[:8],2) for line in lines]
+
+        # program = [
+        #     # From print8.ls8
+        #     0b10000010, # LDI R0,8
+        #     0b00000000,
+        #     0b00001000,
+        #     0b01000111, # PRN R0
+        #     0b00000000,
+        #     0b00000001, # HLT
+        # ]
 
         for instruction in program:
             self.ram[address] = instruction
@@ -57,6 +62,8 @@ class CPU:
 
         if op == "ADD":
             self.reg[reg_a] += self.reg[reg_b]
+        elif op == "MUL":
+            self.reg[reg_a] = (self.reg[reg_a] * self.reg[reg_b])
         #elif op == "SUB": etc
         else:
             raise Exception("Unsupported ALU operation")
@@ -69,7 +76,7 @@ class CPU:
 
         print(f"TRACE: %02X | %02X %02X %02X |" % (
             self.pc,
-            #self.fl,
+            self.fl,
             #self.ie,
             self.ram_read(self.pc),
             self.ram_read(self.pc + 1),
@@ -80,6 +87,7 @@ class CPU:
             print(" %02X" % self.reg[i], end='')
 
         print()
+                
 
     def run(self):
         """Run the CPU."""
@@ -88,57 +96,49 @@ class CPU:
         while self.running:
             ir = self.ram[self.pc]
 
-            if ir == LDI:
-                operand_a = self.ram_read(self.pc + 1)
-                operand_b = self.ram_read(self.pc + 2)
-                
-                self.reg[operand_a] = operand_b
-                self.pc += 3
+            operand_a = self.ram_read(self.pc +1)
+            operand_b = self.ram_read(self.pc +2)
 
-            elif ir == PRN:
-                operand_a = self.ram_read(self.pc + 1)
-                print(self.ram_read(operand_a))
-                self.pc +=2
+            try: 
+                #out put is all of the values returned from the command functions.
+                operation_output = self.commands[ir](operand_a,operand_b)
+                self.running = operation_output[0]
+                self.pc += operation_output[1]
 
-            elif ir == HLT:
-                self.running = False
-                self.pc += 1
-                # sys.exit()
-            
-            else:
-                print(f'failure with {ir} at address {self.pc}')
+            except Exception as e: #error catch
+                print(e)
+                print(f"command: {ir}")
                 sys.exit()
-                
 
-    # def runV2(self):
-    #     """Run the CPU."""
-
-
-    #     while self.running:
-    #         ir = self.ram[self.pc]
-
-    #         operand_a = self.ram_read(self.pc +1)
-    #         operand_b = self.ram_read(self.pc +2)
-
-    #         try:
-    #             operation_output = self.commands[ir](operand_a,operand_b)
-    #             running = operation_output[0]
-    #             self.pc += operation_output[1]
-
-    #         except Exception as e:
-    #             print(e)
-    #             print(f"command: {ir}")
-    #             sys.exit()
-    
-    # def ldi(self,operand_a,operand_b):
-    #     self.reg[operand_a] = operand_b
-    #     return(True, 3) #this is to check that it is still runnig [0] and how many pc spots to hop [1] in this case still runing is true and we hop 3 spots forward.
-
-    # def prn(self, operand_a, operand_b):
-    #     print(self.reg[operand_a])
-    #     return(True, 2)
-    
-    # def hlt(self, operand_a, operand_b):
-    #     return(False, 0)
 
     
+    def ldi(self,operand_a,operand_b):
+        self.reg[operand_a] = operand_b
+        return(True, 3) #this is to check that it is still running [0] and how many pc spots to hop [1] in this case still runing is true and we hop 3 spots forward.
+
+    def prn(self, operand_a, operand_b):
+        print(self.reg[operand_a])
+        return(True, 2)
+    
+    def hlt(self, operand_a, operand_b):
+        return(False, 0)
+
+    def mul(self, operand_a,operand_b):
+        self.alu("MUL", operand_a, operand_b)
+        return(True,3)
+
+
+    def push (self, operand_a, operand_b):
+        self.reg[7] -= 1
+        sp = self.reg[7]
+        value = self.reg[operand_a]
+        self.ram[sp] = value
+        return (True, 2)
+    
+    def pop(self,operand_a,operand_b):
+        sp = self.reg[7]
+        value = self.ram[sp]
+        self.reg[operand_a] = value
+        self.reg[7] += 1
+        return (True, 2)
+
