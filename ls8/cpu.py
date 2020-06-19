@@ -20,7 +20,11 @@ class CPU:
             0b00000001: self.hlt,
             0b10100010: self.mul,
             0b01000101: self.push,
-            0b01000110: self.pop
+            0b01000110: self.pop,
+            0b10100111: self.cmp,
+            0b01010101: self.jeq,
+            0b01010110: self.jne,
+            0b01010100: self.jmp,
         }
 
 
@@ -142,3 +146,40 @@ class CPU:
         self.reg[7] += 1
         return (True, 2)
 
+    def cmp(self, operand_a, operand_b):
+        new_operand_a = self.reg[operand_a]
+        new_operand_b = self.reg[operand_b]
+        if new_operand_a > new_operand_b:
+            value = 0b00000010
+        elif new_operand_a== new_operand_b:
+            value = 0b00000001
+        else:
+            value = 0b00000100
+        self.fl = value
+        return (True, 3)
+
+    def jeq(self, operand_a, operand_b):
+        if self.fl == 0b00000001:
+            address = self.reg[operand_a]
+            self.pc = address
+            return (True, 0)
+        else:
+            return (True, 2)
+
+    def jne(self, operand_a, operand_b):
+        address = self.reg[operand_a]
+        if self.fl == 0b00000100:
+            self.pc = address
+            return (True, 0)
+        else:
+            return (True, 2)
+
+    def jmp(self, operand_a, operand_b):
+        address = self.reg[operand_a]
+        self.pc = address
+        return (True, 0)
+
+    def call(self, operand_a, operand_b):
+        address = self.reg[operand_a]
+        self.pc = address
+        return(True,0)
